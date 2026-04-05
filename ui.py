@@ -30,7 +30,7 @@ def apply_theme() -> None:
                 color: var(--text);
                 font-family: 'IBM Plex Sans', sans-serif;
             }
-            #MainMenu, header, footer {visibility: hidden;}
+            footer {visibility: hidden;}
             div[data-testid='stSidebarNav'] {display: none;}
             [data-testid="stSidebar"] {
                 background: linear-gradient(180deg, #0c1320 0%, #101926 100%);
