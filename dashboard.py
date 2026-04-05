@@ -2,207 +2,216 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
-import database_manager as dbm
+from plotly.subplots import make_subplots
+import plotly.express as px
 import data_engine as engine
 
-# 1. App Configuration
-st.set_page_config(page_title="The Trades Setter", page_icon="🏦", layout="wide")
+# ==========================================
+# 1. PAGE CONFIGURATION & AESTHETICS
+# ==========================================
+st.set_page_config(
+    page_title="Quantitative Trading Terminal",
+    page_icon="⚡",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
-# 2. Database Init
-dbm.init_db()
+# Custom CSS for spacing and aesthetic tuning
+st.markdown("""
+<style>
+    .stMetric {
+        background-color: #1E1E1E;
+        padding: 15px;
+        border-radius: 8px;
+        border: 1px solid #333;
+    }
+    div[data-testid="stSidebarNav"] {display: none;}
+</style>
+""", unsafe_allow_html=True)
 
-# Asset Dictionaries for Dropdowns
-ASSET_CLASSES = {
-    "Cryptocurrency": [
-        "BTC-USD", "ETH-USD", "SOL-USD", "BNB-USD", "XRP-USD", 
-        "ADA-USD", "DOGE-USD", "DOT-USD", "MATIC-USD", "LTC-USD"
-    ],
-    "Forex": [
-        "EURUSD=X", "JPY=X", "GBPUSD=X", "AUDUSD=X", "USDCAD=X", 
-        "USDCHF=X", "NZDUSD=X", "EURJPY=X", "GBPJPY=X", "EURGBP=X", 
-        "AUDJPY=X", "EURAUD=X", "EURCHF=X", "AUDNZD=X", "NZDJPY=X", 
-        "GBPAUD=X", "GBPCAD=X", "EURNZD=X", "AUDCAD=X", "GBPCHF=X"
-    ],
-    "Commodities": [
-        "GC=F",   # Gold
-        "SI=F",   # Silver
-        "CL=F",   # Crude Oil
-        "NG=F",   # Natural Gas
-        "HG=F",   # Copper
-        "ZC=F",   # Corn
-        "ZW=F"    # Wheat
-    ]
-}
-
-# 3. Session State
-if 'logged_in' not in st.session_state:
-    st.session_state.logged_in = False
-if 'username' not in st.session_state:
-    st.session_state.username = ""
-if 'is_approved' not in st.session_state:
-    st.session_state.is_approved = False
-
-# =========================================================================
-# BRANDING
-# =========================================================================
+# ==========================================
+# 2. SIDEBAR - CONTROL PANEL
+# ==========================================
 with st.sidebar:
-    st.image("https://cdn-icons-png.flaticon.com/512/3229/3229871.png", width=100)
-    st.title("The Trades Setter")
+    st.markdown("## ⚙️ Algo Control Panel")
     st.markdown("---")
-    if st.session_state.logged_in:
-        st.success(f"Logged in as: **{st.session_state.username}**")
-        if st.button("Logout"):
-            st.session_state.logged_in = False
-            st.session_state.username = ""
-            st.session_state.is_approved = False
-            st.rerun()
-    st.markdown("---")
-    st.markdown("### Platform Architect")
-    st.markdown("**Pratik Manure**")
-    st.markdown("📧 pratikmanure28@gmail.com")
-    st.markdown("📷 Instagram: [@pratik.manure](https://instagram.com/pratik.manure)")
-
-# =========================================================================
-# PAGES LOGIC
-# =========================================================================
-def login_register_page():
-    st.title("Welcome to The Trades Setter 🏦")
-    st.markdown("Log in or create an account to access the quantitative algorithm engine.")
     
+    st.markdown("### 📊 Market Selection")
+    asset_dict = {
+        "Crypto": ["BTC-USD", "ETH-USD", "SOL-USD", "BNB-USD"],
+        "Forex": ["EURUSD=X", "JPY=X", "GBPUSD=X"],
+        "Equities / Commodities": ["AAPL", "MSFT", "TSLA", "GC=F", "CL=F"]
+    }
+    asset_class = st.selectbox("Asset Class", list(asset_dict.keys()))
+    symbol = st.selectbox("Ticker / Pair", asset_dict[asset_class])
+    
+    timeframe = st.selectbox("Timeframe", ["1y", "2y", "5y", "ytd", "6m"])
+    interval = st.selectbox("Interval", ["1d", "1wk"], index=0)
+    
+    st.markdown("---")
+    st.markdown("### 🧮 Strategy Parameters")
     col1, col2 = st.columns(2)
     with col1:
-        st.subheader("Login")
-        log_user = st.text_input("Username", key="log_user")
-        log_pass = st.text_input("Password", type="password", key="log_pass")
-        if st.button("Login"):
-            auth = dbm.authenticate_user(log_user, log_pass)
-            if auth['success']:
-                st.session_state.logged_in = True
-                st.session_state.username = log_user
-                st.session_state.is_approved = auth['is_approved']
-                st.rerun()
-            else:
-                st.error("Invalid credentials.")
-                
+        fast_ema = st.number_input("Fast EMA", min_value=1, max_value=200, value=9)
     with col2:
-        st.subheader("Sign Up")
-        reg_user = st.text_input("New Username", key="reg_user")
-        reg_pass = st.text_input("New Password", type="password", key="reg_pass")
-        if st.button("Register"):
-            if dbm.register_user(reg_user, reg_pass):
-                st.success("✅ Successfully registered! Please log in (Note: You must wait for Administrator approval to access data).")
-            else:
-                st.error("Username already exists!")
+        slow_ema = st.number_input("Slow EMA", min_value=1, max_value=500, value=21)
+    
+    st.markdown("---")
+    run_strategy = st.button("🚀 Execute Strategy", use_container_width=True, type="primary")
 
-def not_approved_page():
-    st.error("🚪 Access Denied: Account Pending Approval")
-    st.warning("Please contact database and website administrator to approve your account.")
-    st.info("**Administrator**: Pratik Manure\n\n**Email**: pratikmanure28@gmail.com\n\n**Instagram**: @pratik.manure")
+# ==========================================
+# MAIN DASHBOARD LOGIC
+# ==========================================
+if 'results' not in st.session_state:
+    st.session_state.results = None
+if 'heatmap_data' not in st.session_state:
+    st.session_state.heatmap_data = None
+
+if run_strategy:
+    with st.spinner("Compiling algorithmic matrix..."):
+        st.session_state.results = engine.get_live_data(symbol, fast_ema, slow_ema, timeframe, interval)
+        st.session_state.heatmap_data = engine.optimize_strategy(symbol, timeframe, interval)
+
+# Main UI Rendering
+if st.session_state.results:
+    res = st.session_state.results
+    df = res['df']
+    kpi = res['kpi']
+    trade_log = res['trade_log']
     
-def main_dashboard():
-    tabs = ["📈 Backtest Engine", "💻 Upload Your Strategy"]
-    if st.session_state.username == "traderpratik":
-        tabs.append("👑 Admin Panel")
-        
-    app_tabs = st.tabs(tabs)
+    # ------------------------------------------
+    # 3. TOP KPI METRIC CARDS
+    # ------------------------------------------
+    st.markdown(f"## ⚡ Terminal Analysis: {symbol} ({timeframe})")
+    k1, k2, k3, k4 = st.columns(4)
+    k1.metric("Total Return", f"{kpi['total_return']:.2f} %", delta=f"{kpi['total_return']:.2f}%")
+    k2.metric("Win Rate", f"{kpi['win_rate']:.2f} %")
+    k3.metric("Max Drawdown", f"{kpi['max_drawdown']:.2f} %", delta="-Risk", delta_color="inverse")
+    k4.metric("Sharpe Ratio", f"{kpi['sharpe_ratio']:.3f}")
     
-    # ---------------------------------------------------------------------
-    # TAB 1: MAIN DASHBOARD & TRADING PAIRS
-    # ---------------------------------------------------------------------
-    with app_tabs[0]:
-        st.title("📈 Quantitative Market Analysis")
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    # ------------------------------------------
+    # GUI TABS
+    # ------------------------------------------
+    tab_overview, tab_trades, tab_analytics, tab_optimization = st.tabs([
+        "📈 Charting Overview", 
+        "📋 Trade Log", 
+        "🔬 Analytics", 
+        "🔥 Optimization Heatmap"
+    ])
+    
+    # --- TAB 1: PLOTLY DASHBOARD ---
+    with tab_overview:
+        # Create a 3-Row Subplot: Price, Equity, Drawdown
+        fig = make_subplots(
+            rows=3, cols=1, shared_xaxes=True, 
+            vertical_spacing=0.05, 
+            row_heights=[0.6, 0.25, 0.15],
+            subplot_titles=("Price Action & Signals", "Portoflio Equity Curve", "Drawdown Profile")
+        )
+
+        # 4. CANDLESTICK & SIGNALS (ROW 1)
+        fig.add_trace(go.Candlestick(x=df['Date'], open=df['open'], high=df['high'], low=df['low'], close=df['close'], name='Price'), row=1, col=1)
+        fig.add_trace(go.Scatter(x=df['Date'], y=df['ema_fast'], line=dict(color='#00F0FF', width=1), name=f'EMA {fast_ema}'), row=1, col=1)
+        fig.add_trace(go.Scatter(x=df['Date'], y=df['ema_slow'], line=dict(color='#FF0055', width=1), name=f'EMA {slow_ema}'), row=1, col=1)
+
+        buys = df[df['trade_trigger'] == 2]
+        sells = df[df['trade_trigger'] == -2]
         
-        # Categorized Trading Pair Selector
-        col_cat, col_pair, col_metric1, col_metric2 = st.columns([1,1,1,1])
-        with col_cat:
-            asset_class = st.selectbox("Asset Class", list(ASSET_CLASSES.keys()))
-        with col_pair:
-            trading_pair = st.selectbox("Trading Pair", ASSET_CLASSES[asset_class])
+        fig.add_trace(go.Scatter(
+            x=buys['Date'], y=buys['close'], mode='markers',
+            marker=dict(symbol='triangle-up', size=12, color='#00ff00', line=dict(width=1, color='black')),
+            name='BUY'
+        ), row=1, col=1)
         
-        # Load the data dynamically
-        with st.spinner(f"Fetching live data and running algorithms for {trading_pair}..."):
-            df = engine.get_live_data(trading_pair)
+        fig.add_trace(go.Scatter(
+            x=sells['Date'], y=sells['close'], mode='markers',
+            marker=dict(symbol='triangle-down', size=12, color='#ff0000', line=dict(width=1, color='black')),
+            name='SELL'
+        ), row=1, col=1)
+
+        # 5. EQUITY CURVE (ROW 2)
+        fig.add_trace(go.Scatter(
+            x=df['Date'], y=df['equity_curve'], 
+            line=dict(color='#FFD700', width=2), name='Equity', fill='tozeroy'
+        ), row=2, col=1)
+
+        # 5. DRAWDOWN (ROW 3)
+        fig.add_trace(go.Scatter(
+            x=df['Date'], y=df['drawdown'], 
+            line=dict(color='#ff3333', width=1), name='Drawdown %', fill='tozeroy'
+        ), row=3, col=1)
+
+        # Update Layouts for Professional UI
+        fig.update_layout(
+            template='plotly_dark', 
+            height=900, 
+            margin=dict(l=20, r=20, t=40, b=20),
+            xaxis3_rangeslider_visible=True,
+            xaxis_rangeslider_visible=False,
+            hovermode='x unified'
+        )
+        st.plotly_chart(fig, use_container_width=True)
+
+    # --- TAB 2: TRADE LOG ---
+    with tab_trades:
+        st.markdown("### 📋 Historic Execution Ledger")
+        if not trade_log.empty:
+            # Color coding the action column
+            def color_action(val):
+                color = 'green' if val == 'BUY' else 'red'
+                return f'color: {color}; font-weight: bold;'
             
-        if not df.empty:
-            with col_metric1:
-                st.metric(label="Current Date", value=str(df['Date'].iloc[-1].date()))
-            with col_metric2:
-                if 'signal' in df.columns:
-                    st.metric(label="Latest Signal", value="BUY 🟢" if df['signal'].iloc[-1] == 1 else "SELL 🔴")
-                
-            fig = go.Figure()
-            fig.add_trace(go.Candlestick(x=df['Date'], open=df['open'], high=df['high'], low=df['low'], close=df['close'], name='Price'))
-            
-            if 'ema_9' in df.columns:
-                fig.add_trace(go.Scatter(x=df['Date'], y=df['ema_9'], line=dict(color='#00F0FF', width=1.5), name='System EMA 9'))
-                fig.add_trace(go.Scatter(x=df['Date'], y=df['ema_21'], line=dict(color='#FF0055', width=1.5), name='System EMA 21'))
-            
-            fig.update_layout(title=f'{trading_pair} Price Action', template='plotly_dark', height=650)
-            st.plotly_chart(fig, use_container_width=True)
+            st.dataframe(
+                trade_log.style.applymap(color_action, subset=['Action']), 
+                use_container_width=True, 
+                hide_index=True
+            )
         else:
-            st.error(f"❌ Yahoo Finance failed to return data for {trading_pair}. The symbol may be temporarily blocked or rate-limited by Yahoo. Try selecting a different asset!")
-                
-    # ---------------------------------------------------------------------
-    # TAB 2: UPLOAD STRATEGY
-    # ---------------------------------------------------------------------
-    with app_tabs[1]:
-        st.title("💻 Custom Strategy Upload (Beta)")
-        st.markdown("Upload your own Python script (`.py`). It must contain a function called `apply_strategy(df)` that returns your buy/sell logic!")
-        
-        uploaded_file = st.file_uploader("Upload Python Implementation", type=["py"])
-        
-        col_cat_test, col_pair_test = st.columns(2)
-        with col_cat_test:
-            test_asset_class = st.selectbox("Test Asset Class:", list(ASSET_CLASSES.keys()))
-        with col_pair_test:
-            target_asset = st.selectbox("Select Asset to Test Against:", ASSET_CLASSES[test_asset_class])
-        
-        if uploaded_file is not None and st.button("Execute Backtest"):
-            source_code = uploaded_file.getvalue().decode("utf-8")
-            raw_data = engine.clean_data(engine.fetch_crypto_data(target_asset))
-            
-            st.success("Custom Python Script Injected!")
-            with st.spinner("Compiling and running against data..."):
-                try:
-                    local_env = {"pd": pd, "np": np}
-                    exec(source_code, globals(), local_env)
-                    
-                    if 'apply_strategy' in local_env:
-                        custom_df = local_env['apply_strategy'](raw_data)
-                        st.write("### Strategy Results Output")
-                        st.dataframe(custom_df.tail(15))
-                    else:
-                        st.error("Error: Code did not contain 'apply_strategy(df)' function.")
-                except Exception as e:
-                    st.error(f"Execution Error in your script: {str(e)}")
+            st.info("No trades executed during this timeframe.")
 
-    # ---------------------------------------------------------------------
-    # TAB 3: ADMIN CONTROLS
-    # ---------------------------------------------------------------------
-    if st.session_state.username == "traderpratik":
-        with app_tabs[2]:
-            st.title("👑 God Mode Control Panel")
-            st.markdown("As 'traderpratik', you have full authority over the database.")
+    # --- TAB 3: ANALYTICS ---
+    with tab_analytics:
+        st.markdown("### 🔬 Strategy vs Market Performance")
+        
+        # SQL-style analytics representation
+        end_price = df['close'].iloc[-1]
+        start_price = df['close'].iloc[0]
+        buy_and_hold = ((end_price / start_price) - 1) * 100
+        
+        c_an1, c_an2 = st.columns(2)
+        with c_an1:
+            st.info("#### Base Market Yield (Buy & Hold)")
+            st.metric("Market Return", f"{buy_and_hold:.2f}%")
+            st.metric("Initial Asset Price", f"${start_price:.2f}")
+            st.metric("Final Asset Price", f"${end_price:.2f}")
             
-            users_df = dbm.get_all_users()
-            st.write("### Database: Registered Users")
-            st.dataframe(users_df)
-            
-            if not users_df.empty:
-                pending_users = users_df[users_df['is_approved'] == 0]['username'].tolist()
-                user_to_approve = st.selectbox("Select User Account to Approve:", pending_users)
-                
-                if st.button("✅ Approve User Account") and user_to_approve:
-                    dbm.approve_user(user_to_approve)
-                    st.success(f"System access granted to user '{user_to_approve}'!")
-                    st.rerun()
+        with c_an2:
+            st.success("#### Algorithmic Alpha")
+            st.metric("Strategy Return", f"{kpi['total_return']:.2f}%", delta=f"{(kpi['total_return'] - buy_and_hold):.2f}% vs Market")
+            st.metric("Starting Capital", "$10,000.00")
+            st.metric("Ending Capital", f"${str(round(kpi['total_return']/100 * 10000 + 10000, 2))}")
 
-# =========================================================================
-# ROUTING
-# =========================================================================
-if not st.session_state.logged_in:
-    login_register_page()
-elif st.session_state.logged_in and not st.session_state.is_approved:
-    not_approved_page()
+    # --- TAB 4: HEATMAP ---
+    with tab_optimization:
+        st.markdown("### 🔥 Hyperparameter Optimization Surface (5-50 EMA matrix)")
+        st.markdown("Visualizing Total Return % across various Slow and Fast moving average combinations to locate optimal parameters.")
+        
+        hm_data = st.session_state.heatmap_data
+        if hm_data is not None and not hm_data.empty:
+            fig_hm = px.imshow(
+                hm_data, 
+                text_auto=True, 
+                aspect="auto",
+                color_continuous_scale="RdYlGn",
+                labels=dict(x="Fast EMA Length", y="Slow EMA Length", color="Return %")
+            )
+            fig_hm.update_layout(template='plotly_dark', height=600)
+            st.plotly_chart(fig_hm, use_container_width=True)
+        else:
+            st.warning("Insufficient data to generate parameter heatmap.")
+
 else:
-    main_dashboard()
+    # Landing State
+    st.info("👆 Configure your algorithmic constraints in the Sidebar and hit **Execute Strategy** to compile the terminal.")
