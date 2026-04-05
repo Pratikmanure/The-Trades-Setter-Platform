@@ -7,18 +7,7 @@ from streamlit_cookies_manager import EncryptedCookieManager
 import database_manager as dbm
 from data import DEFAULT_SYMBOLS, TIMEFRAME_OPTIONS, load_market_data
 from strategy import compare_strategies, optimize_strategy, run_portfolio_mode, run_strategy
-from ui import (
-    apply_theme,
-    render_analytics_tab,
-    render_candles_chart,
-    render_empty_state,
-    render_equity_chart,
-    render_header,
-    render_kpi_cards,
-    render_login_screen,
-    render_logs_tab,
-    render_trades_tab,
-)
+from ui import apply_theme, render_analytics_tab, render_candles_chart, render_empty_state, render_equity_chart, render_header, render_kpi_cards, render_logs_tab, render_trades_tab
 
 
 st.set_page_config(
@@ -35,9 +24,8 @@ if not cookies.ready():
     st.stop()
 
 if "logged_in" not in st.session_state:
-    persisted_login = cookies.get("login") == "true"
-    st.session_state.logged_in = persisted_login
-    st.session_state.username = cookies.get("username") if persisted_login else ""
+    st.session_state.logged_in = True
+    st.session_state.username = "Guest"
 
 if "analysis_results" not in st.session_state:
     st.session_state.analysis_results = None
@@ -55,25 +43,9 @@ def append_log(message: str) -> None:
     st.session_state.activity_log = st.session_state.activity_log[-200:]
 
 
-if not st.session_state.logged_in:
-    auth_action = render_login_screen()
-    if auth_action["action"] == "login":
-        auth = dbm.authenticate_user(auth_action["username"], auth_action["password"])
-        if auth.get("success") and auth.get("is_approved"):
-            cookies["login"] = "true"
-            cookies["username"] = auth_action["username"]
-            cookies.save()
-            st.session_state.logged_in = True
-            st.session_state.username = auth_action["username"]
-            append_log(f"Operator {auth_action['username']} authenticated successfully.")
-            st.rerun()
-        st.error("Invalid credentials or account awaiting approval.")
-    elif auth_action["action"] == "register":
-        if dbm.register_user(auth_action["username"], auth_action["password"]):
-            st.success("Registration submitted. Please wait for administrator approval.")
-        else:
-            st.error("That operator ID already exists.")
-    st.stop()
+# Public access mode: authentication is temporarily paused.
+st.session_state.logged_in = True
+st.session_state.username = "Guest"
 
 with st.sidebar:
     st.markdown("### Market")
@@ -249,14 +221,3 @@ with tab_analytics:
     )
 with tab_logs:
     render_logs_tab(st.session_state.activity_log, primary)
-
-logout_col_a, logout_col_b = st.columns([8, 1])
-with logout_col_b:
-    if st.button("Logout", use_container_width=True):
-        cookies["login"] = "false"
-        cookies["username"] = ""
-        cookies.save()
-        st.session_state.logged_in = False
-        st.session_state.username = ""
-        append_log("Operator logged out.")
-        st.rerun()
